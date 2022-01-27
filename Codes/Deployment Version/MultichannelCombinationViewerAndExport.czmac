@@ -1,0 +1,842 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Script>
+  <Context>Zen26</Context>
+  <Version>1.0</Version>
+  <Language>Python</Language>
+  <Text>####################################################################
+## I M A G E   P R O C E S S I N G
+##
+## Macro name: MultichannelCombinationViewerAndExport.czmac
+##
+## Author name: APAC Digital Solutions Team
+##
+## TAKES THE MULTICHANNEL ACTIVE IMAGE
+## SUBSET THE CHANNELS AND CREATE DESIRED COMBINATION 
+## OF CHANNEL OUTPUTS
+## EXPORT THE OUTPUTS WITH DESIRED TYPE
+##
+## Copyright (c) 2021 by Carl Zeiss Microscopy GmbH.
+## Permission is granted to use, modify and distribute this code,
+## as long as this copyright notice remains part of the code.
+####################################################################
+##
+##
+## Import required libraries
+import os
+from itertools import combinations
+from System.Diagnostics import Process
+import time
+import re
+from System.IO import File, Directory, FileInfo, Path
+##
+
+### clear console output
+Zen.Application.MacroEditor.ClearMessages()
+
+## Set the experiment output image as the active document for the macro
+image = Zen.Application.Documents.ActiveDocument
+#print(image.FileName)
+
+image_basename = os.path.basename(image.FileName)
+export_folder_prefix = os.path.splitext(image_basename)[0]
+
+## Get the number of channels in the image
+num_channels = image.Bounds.SizeC
+print('Number of channels',num_channels)
+num_channels_list = list(range(1, num_channels+1))
+channel_name_list = []
+
+## Get all the channel naes as a list
+for j in range (1,num_channels+1):
+    ## Get channel name from image metadata
+    channel_name = image.Metadata.GetChannelName(j-1)
+    ##
+    ## Create an array of channel names
+    channel_name_list.append(channel_name)
+## 
+
+print('Names of the channels:', channel_name_list)
+## Finding the maximum possible combinations of channels
+possible_channel_combinations = sum([list(map(list, combinations(channel_name_list, i))) for i in range(len(channel_name_list) + 1)], [])
+print(possible_channel_combinations)
+##
+
+## Number of channels that can be selected by the user
+num_channel_combinations = possible_channel_combinations.Count
+export_list = ['JPEG File Interchange Format (JPEG)', 'Windows Bitmap (BMP)', 'Tagged Image File Format (TIFF)', 'Tiff Format (64Bit) (BigTiff)', 'Portable Network Graphics (PNG)', 'JPEG XR(WDP)', 'DigitalSurf SUR (SUR)']
+#export_list = ['JPEG File Interchange Format (JPEG)', 'Windows Bitmap (BMP)', 'Tagged Image File Format (TIFF)', 'Tiff Format (64Bit) (BigTiff)', 'Portable Network Graphics (PNG)', 'JPEG XR(WDP)']
+
+## Set up GUI window
+window1 = ZenWindow()
+window1.Initialize("Select Channel Combinations and Export Options")
+
+## GUI checkbox to select the channel combinations
+for k in range(1, num_channel_combinations):
+     window1.AddCheckbox('channel_combination'+str(k),str(possible_channel_combinations[k]),False)
+#window1.AddFolderBrowser('export_folder','Export Folder','C:\Users\Public\Pictures')     
+window1.AddDropDown('export_type', 'Export Type', export_list, 0)
+result1 = window1.Show()
+
+## Process GUI Inputs
+#export_folder = str(result1.GetValue('export_folder'))
+#print('Selected folder to export:', export_folder)
+export_type = str(result1.GetValue('export_type'))
+print('Selected export type:',export_type)
+
+selected_channel_combinations = []
+for m in range(1, num_channel_combinations):
+     selected_channel_combinations_temp    = str(result1.GetValue('channel_combination'+str(m)))
+     if selected_channel_combinations_temp == "True":
+        selected_channel_combinations.append((possible_channel_combinations[m]))
+print('The channel combinations selected are:', selected_channel_combinations)
+##
+
+## Defining the export processing settings
+## JPEG
+if (export_type == 'JPEG File Interchange Format (JPEG)'):
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.JPEG)
+    processingsetting1.SubsetString = ''
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'JPEG Export Parameters'
+    window.AddIntegerRange('Quality','Quality',100,1,100)
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\ZSPANIYA\Desktop')
+    window.AddCheckbox('CreateFolder','             Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','              Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','              Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    
+    ## Read the user-input export parameters from the GUI
+    Quality = int(result.GetValue('Quality'))
+    print(Quality)
+    #print(Resize)
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    
+    if UseSubSet == True:
+       UseFullSet = False
+       window1_5 = ZenWindow()
+       window1_5.Title = 'Define Subset'
+       if image.Bounds.SizeS &gt; 1:
+          window1_5.AddDropDown('Scene','Scene', ['Extract All', 'Extract Single', 'Extract Range', 'Extract Multiple'], 0)
+       if image.Bounds.SizeT &gt; 1:
+          window1_5.AddDropDown('Time','Time', ['Extract All', 'Extract Single', 'Extract Range', 'Extract Multiple'], 0)
+       if image.Bounds.SizeZ &gt; 1:
+          window1_5.AddDropDown('Z_Stack','Z_Stack', ['Extract All', 'Extract Single', 'Extract Range', 'Extract Multiple'], 0)
+       window1_5.AddDropDown('Region','Region', ['Full', 'Rectangle Region' ], 0)
+       result1_5=window1_5.Show() 
+       
+       if image.Bounds.SizeS &gt; 1:
+          Scene = str(result1_5.GetValue('Scene'))
+          if Scene != 'Extract All':
+              window2_5 = ZenWindow()
+              window2_5.Title = 'Define Subset Scenes'
+              if Scene == 'Extract Single':
+                   window2_5.AddIntegerRange('ExtractSingle','Extract Single',1,1,image.Bounds.SizeS)
+              if Scene == 'Extract Range':
+                  window2_5.AddIntegerRange('LowerRange','Extract Range (Lower)',1,1,image.Bounds.SizeS)
+                  window2_5.AddIntegerRange('UpperRange','Extract Range (Upper)',image.Bounds.SizeS,1,image.Bounds.SizeS)
+              if Scene == 'Extract Multiple':
+                 window2_5.AddTextBox('ExtractMultiple','Extract Multiple Scenes', '')
+              
+              result2_5 = window2_5.Show()
+              scene_setting = ''
+              if Scene == 'Extract Single':
+                  ExtractSingle = int(result2_5.GetValue('ExtractSingle'))
+                  scene_setting = scene_setting + str(ExtractSingle)
+                  print('Scene_Setting', scene_setting)
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'S('+str(ExtractSingle)+')'
+              if Scene == 'Extract Range':
+                  LowerRange = int(result2_5.GetValue('LowerRange'))
+                  UpperRange = int(result2_5.GetValue('UpperRange'))
+                  scene_setting = scene_setting + str(LowerRange)+'-'+str(UpperRange) 
+                  print('Scene_Setting', scene_setting)
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'S('+str(LowerRange)+'-'+str(UpperRange) +')'
+              if Scene == 'Extract Multiple':
+                 ExtractMultiple = str(result2_5.GetValue('ExtractMultiple'))
+                 ExtractMultiple = ExtractMultiple.Split(',')
+                 group_slice = []
+                 slice = []
+                 group_number = 0
+                 slice_number = 0
+                 
+                 for i in range(ExtractMultiple.Length):
+                        if ExtractMultiple[i].find('-') != -1:
+                           group_number = group_number 
+                           group_slice_temp = ExtractMultiple[i].Split('-')
+                           group_slice.append(group_slice_temp)
+                        else:
+                           slice_number = slice_number+1
+                           ExtractMultiple_slice = ExtractMultiple[i]
+                           slice_temp =  ExtractMultiple[i]
+                           slice.append(slice_temp)
+                           
+                 ExtractMultiple_final = []
+                 for j in range(group_number) :
+                        lower_slice_of_group = int(group_slice[group_number-1][0]) 
+                        upper_slice_of_group = int(group_slice[group_number-1][1]) 
+                        ExtractMultiple_temp = str(lower_slice_of_group)+ '-' + str(upper_slice_of_group)
+                        ExtractMultiple_final.append(ExtractMultiple_temp)       
+                 for k in range(slice_number):  
+                         slice[k] = int(slice[k])
+                         ExtractMultiple_temp = str(slice[k])
+                         ExtractMultiple_final.append(ExtractMultiple_temp)  
+                         
+                 #print('ExtractMultiple_final')  
+                 #print(str(ExtractMultiple_final))   
+                 scene_setting = scene_setting + str(ExtractMultiple_final)
+                 #print('Scene_Setting', scene_setting)
+                 processingsetting1.SubsetString = processingsetting1.SubsetString + 'S('+str(ExtractMultiple_final) +')'
+                 print(processingsetting1.SubsetString)
+              
+       if image.Bounds.SizeT &gt; 1:
+          Time = str(result1_5.GetValue('Time'))
+          if Time != 'Extract All':
+              window2_5 = ZenWindow()
+              window2_5.Title = 'Define Subset Time Frames'
+              if Time == 'Extract Single':
+                   window2_5.AddIntegerRange('ExtractSingle','Extract Single',1,1,image.Bounds.SizeT)
+              if Time == 'Extract Range':
+                  window2_5.AddIntegerRange('LowerRange','Extract Range (Lower)',1,1,image.Bounds.SizeT)
+                  window2_5.AddIntegerRange('UpperRange','Extract Range (Upper)',image.Bounds.SizeT,1,image.Bounds.SizeT)
+              if Time == 'Extract Multiple':
+                 window2_5.AddTextBox('ExtractMultiple','Extract Multiple Time Frames', '')
+             
+              result2_5 = window2_5.Show()
+              if Time == 'Extract Single':
+                  ExtractSingle = int(result2_5.GetValue('ExtractSingle'))
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'T('+str(ExtractSingle)+')'
+              if Time == 'Extract Range':
+                  LowerRange = int(result2_5.GetValue('LowerRange'))
+                  UpperRange = int(result2_5.GetValue('UpperRange'))
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'T('+str(LowerRange)+'-'+str(UpperRange) +')'
+              if Time == 'Extract Multiple':
+                 ExtractMultiple = str(result2_5.GetValue('ExtractMultiple'))
+                 ExtractMultiple = ExtractMultiple.Split(',')
+                 group_slice = []
+                 slice = []
+                 group_number = 0
+                 slice_number = 0
+                 for i in range(ExtractMultiple.Length):
+                        if ExtractMultiple[i].find('-') != -1:
+                           group_number = group_number + 1
+                           group_slice_temp = ExtractMultiple[i].Split('-')
+                           group_slice.append(group_slice_temp)
+                        else:
+                           slice_number = slice_number+1
+                           ExtractMultiple_slice = ExtractMultiple[i]
+                           slice_temp =  ExtractMultiple[i]
+                           slice.append(slice_temp)
+                 ExtractMultiple_final = []
+                 for j in range(group_number) :
+                        lower_slice_of_group = int(group_slice[group_number-1][0]) + 1
+                        upper_slice_of_group = int(group_slice[group_number-1][1]) + 1
+                        ExtractMultiple_temp = str(lower_slice_of_group)+ '-' + str(upper_slice_of_group)
+                        ExtractMultiple_final.append(ExtractMultiple_temp)       
+                 for k in range(slice_number):  
+                         slice[k] = int(slice[k]) + 1
+                         ExtractMultiple_temp = str(slice[k])
+                         ExtractMultiple_final.append(ExtractMultiple_temp)  
+                 #print(str(ExtractMultiple_final))        
+                 processingsetting1.SubsetString = processingsetting1.SubsetString + 'T('+str(ExtractMultiple_final) +')'
+                 print(processingsetting1.SubsetString)
+                 
+       if image.Bounds.SizeZ &gt; 1:
+          Z_Stack = str(result1_5.GetValue('Z_Stack'))
+          if Z_Stack != 'Extract All':
+              window2_5 = ZenWindow()
+              window2_5.Title = 'Define Subset Z-Stack'
+              if Z_Stack == 'Extract Single':
+                   window2_5.AddIntegerRange('ExtractSingle','Extract Single',1,1,image.Bounds.SizeZ)
+              if Z_Stack == 'Extract Range':
+                  window2_5.AddIntegerRange('LowerRange','Extract Range (Lower)',1,1,image.Bounds.SizeZ)
+                  window2_5.AddIntegerRange('UpperRange','Extract Range (Upper)',image.Bounds.SizeZ,1,image.Bounds.SizeZ)
+              if Z_Stack == 'Extract Multiple':
+                 window2_5.AddTextBox('ExtractMultiple','Extract Multiple Z-stack', '')
+             
+              result2_5 = window2_5.Show()
+              if Z_Stack == 'Extract Single':
+                  ExtractSingle = int(result2_5.GetValue('ExtractSingle'))
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'Z('+str(ExtractSingle)+')'
+              if Z_Stack == 'Extract Range':
+                  LowerRange = int(result2_5.GetValue('LowerRange'))
+                  UpperRange = int(result2_5.GetValue('UpperRange'))
+                  processingsetting1.SubsetString = processingsetting1.SubsetString + 'Z('+str(LowerRange)+'-'+str(UpperRange) +')'
+              if Z_Stack == 'Extract Multiple':
+                 ExtractMultiple = str(result2_5.GetValue('ExtractMultiple'))
+                 ExtractMultiple = ExtractMultiple.Split(',')
+                 group_slice = []
+                 slice = []
+                 group_number = 0
+                 slice_number = 0
+                 
+                 for i in range(ExtractMultiple.Length):
+                        if ExtractMultiple[i].find('-') != -1:
+                           group_number = group_number + 1
+                           group_slice_temp = ExtractMultiple[i].Split('-')
+                           group_slice.append(group_slice_temp)
+                        else:
+                           slice_number = slice_number+1
+                           ExtractMultiple_slice = ExtractMultiple[i]
+                           slice_temp =  ExtractMultiple[i]
+                           slice.append(slice_temp)
+                           
+                 ExtractMultiple_final = []
+                 for j in range(group_number) :
+                        lower_slice_of_group = int(group_slice[group_number-1][0]) + 1
+                        upper_slice_of_group = int(group_slice[group_number-1][1]) + 1
+                        ExtractMultiple_temp = str(lower_slice_of_group)+ '-' + str(upper_slice_of_group)
+                        ExtractMultiple_final.append(ExtractMultiple_temp)       
+                 for k in range(slice_number):  
+                         slice[k] = int(slice[k]) 
+                         ExtractMultiple_temp = str(slice[k])
+                         ExtractMultiple_final.append(ExtractMultiple_temp)  
+                         
+                 #print(str(ExtractMultiple_final))   
+                 ExtractMultiple_final = str(ExtractMultiple_final).replace('[', '')
+                 ExtractMultiple_final = ExtractMultiple_final.replace(']', '')
+                 processingsetting1.SubsetString = processingsetting1.SubsetString + 'Z('+str(ExtractMultiple_final) +')'
+                 print(processingsetting1.SubsetString)
+                 
+       Region = str(result1_5.GetValue('Region'))
+             
+       if Region == 'Rectangle Region':
+            # Extract dimensions
+            z = image.Bounds.SizeZ
+            t = image.Bounds.SizeT
+            c = image.Bounds.SizeC
+            s = image.Bounds.SizeS
+            print('##*********************************************###')
+            #print(scene_setting)
+            
+            for scene in range(0, s):
+              # Separate and show scene
+              if s &gt; 1:
+                 
+                 if str(scene) in scene_setting:
+                     print(scene_setting) 
+                     sc = "S(" + str(scene) + ")"
+                     sceneImage = Zen.Processing.Utilities.CreateSubset(image, sc)
+                     Zen.Application.Documents.Add(sceneImage)
+                     # Draw ROI contours
+                     Zen.Application.Pause(
+                    'Switch to Graphics view!\nSelect Rectangle tool and draw ROI contour!\nThen press Continue!')
+                     # Extract and save ROIs
+                     #for i in range(0, sceneImage.Graphics.Count):
+                        # Switch of measurement values
+                     graphic = sceneImage.Graphics[0]
+                     graphic.IsMeasurementVisible = False
+        
+                     # Get coordinates of bounding box
+                     XS = graphic.Bounds.Left +5
+                     YS = graphic.Bounds.Top +5
+                     XE = graphic.Bounds.Right-5
+                     YE = graphic.Bounds.Bottom -5
+        
+                     # Create bounding box image of ROI
+                     strBoundBox = 'X(' + str(int(XS)) + '-' + str(int(XE)) + ')|Y(' + str(int(YS)) + '-' + str(int(YE)) + ')'
+                     processingsetting1.SubsetString = processingsetting1.SubsetString + '|'+ strBoundBox 
+    
+              else:
+                 sceneImage = image
+                 # Draw ROI contours
+                 Zen.Application.Pause(
+                    'Switch to Graphics view!\nSelect Rectangle tool and draw ROI contour!\nThen press Continue!')
+                
+                 graphic = sceneImage.Graphics[0]
+                 graphic.IsMeasurementVisible = False
+        
+                 # Get coordinates of bounding box
+                 XS = graphic.Bounds.Left +5
+                 YS = graphic.Bounds.Top +5
+                 XE = graphic.Bounds.Right-5
+                 YE = graphic.Bounds.Bottom -5
+        
+                 # Create bounding box image of ROI
+                 strBoundBox = 'X(' + str(int(XS)) + '-' + str(int(XE)) + ')|Y(' + str(int(YS)) + '-' + str(int(YE)) + ')'
+                 processingsetting1.SubsetString = processingsetting1.SubsetString + '|'+ strBoundBox 
+               
+            
+            #processingsetting1.SubsetString = processingsetting1.SubsetString + '|'+ strBoundBox
+            print(processingsetting1.SubsetString)
+            
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    GenerateZipFile = (result.GetValue('GenerateZipFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    
+    ## Apply the user-selected Processing Setting
+    processingsetting1.Quality = Quality
+    processingsetting1.ShiftPixel = ShiftPixel
+    processingsetting1.DestinationFolder = destfolder 
+    #processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    #processingsetting1.Resize = (float(Resize/100))
+    processingsetting1.Resize = float(Resize/100)
+    print(processingsetting1.Resize)
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = GenerateZipFile
+    processingsetting1.GraphicElementsZoom = float(zoom/100)
+    processingsetting1.Prefix = Prefix 
+    
+## BMP    
+elif (export_type == 'Windows Bitmap (BMP)'):
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'BMP Export Parameters'
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','                  Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    GenerateZipFile = (result.GetValue('GenerateZipFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    
+    if UseSubSet == True:
+       UseFullSet = False
+     
+    ## Apply the user-selected Processing Setting
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.BMP)
+    processingsetting1.ShiftPixel = ShiftPixel
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = float(Resize/100)
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = GenerateZipFile
+    processingsetting1.GraphicElementsZoom = int(zoom/100)
+## TIFF        
+elif (export_type == 'Tagged Image File Format (TIFF)'):
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'TIFF Export Parameters'
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('ConvertTo8Bit','Convert to 8 bit',True)
+    window.AddDropDown('Compression','Compression',['None', 'LZW', 'ZIP'], 1)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','                  Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+        ConvertTo8Bit = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+        ConvertTo8Bit = (result.GetValue('ConvertTo8Bit'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    GenerateZipFile = (result.GetValue('GenerateZipFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    ## Apply the user-selected Processing Setting
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.TIFF)
+    if Compression == 'LZW':
+       processingsetting1.Compression = ZenTiffCompression.Lzw
+    elif Compression == 'ZIP':
+       processingsetting1.Compression = ZenTiffCompression.Zip
+    else:
+       processingsetting1.Compression = ZenTiffCompression.None
+    processingsetting1.ConvertTo8Bit = ConvertTo8Bit
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = Resize/100
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = GenerateZipFile
+    processingsetting1.GraphicElementsZoom = zoom/100
+## BigTIFF 
+elif (export_type == 'Tiff Format (64Bit) (BigTiff)'): 
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'Big TIFF Export Parameters'
+    window.AddCheckbox('BigTIFF','BigTIFF',True, '0', '0')
+    window.AddCheckbox('TIFFTiles','TIFF Tiles',True, '0', '1')
+    window.AddCheckbox('ConvertTo8Bit','Convert to 8 bit',False, '0', '2')
+    window.AddCheckbox('Pyramid','Pyramid',True, '1', '0') 
+    window.AddCheckbox('MergeAllScenes','Merge all Scenes',True, '1', '2')
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddDropDown('Compression','Compression',['None', 'Lossless', 'Lossy'], 1)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Resize = float(result.GetValue('Resize')) 
+    BigTIFF = (result.GetValue('BigTIFF'))
+    TIFFTiles = (result.GetValue('TIFFTiles'))
+    Pyramid = (result.GetValue('Pyramid'))
+    MergeAllScenes = (result.GetValue('MergeAllScenes'))
+    Compression = str(result.GetValue('Compression'))
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+        ConvertTo8Bit = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+        ConvertTo8Bit = (result.GetValue('ConvertTo8Bit'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    ## Apply the user-selected Processing Setting
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.BigTiff)
+    processingsetting1.ShiftPixel = ShiftPixel
+    processingsetting1.BigTiff = BigTIFF
+    if Compression == 'Lossless':
+         processingsetting1.Compression = ZenBigTiffCompression.Lossfree
+    elif Compression == 'Lossy':
+         processingsetting1.Compression = ZenBigTiffCompression.Lossy
+    else:
+         processingsetting1.Compression = ZenBigTiffCompression.None
+    processingsetting1.MergeAllScenes = True
+    processingsetting1.TiffTiles = TIFFTiles
+    processingsetting1.Pyramide = Pyramid
+    processingsetting1.ConvertTo8Bit = ConvertTo8Bit
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = Resize/100
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GraphicElementsZoom = zoom/100
+## PNG    
+elif (export_type == 'Portable Network Graphics (PNG)'): 
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'PNG Export Parameters'
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('ConvertTo8Bit','Convert to 8 bit',True)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','                  Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+        ConvertTo8Bit = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+        ConvertTo8Bit = (result.GetValue('ConvertTo8Bit'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    GenerateZipFile = (result.GetValue('GenerateZipFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    ## Apply the user-selected Processing Setting
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.PNG)
+    processingsetting1.ConvertTo8Bit = ConvertTo8Bit
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = Resize/100
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = GenerateZipFile
+    processingsetting1.GraphicElementsZoom = zoom/100
+## JPEG XR
+elif (export_type == 'JPEG XR(WDP)'):
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'JPEG XR Export Parameters'
+    window.AddCheckbox('ConvertTo8Bit','Convert to 8 bit',True)
+    window.AddIntegerRange('Quality','Quality',100,1,100)
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','                  Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Quality = int(result.GetValue('Quality'))
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+        ConvertTo8Bit = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+        ConvertTo8Bit = (result.GetValue('ConvertTo8Bit'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    GenerateZipFile = (result.GetValue('GenerateZipFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    ## Apply the user-selected Processing Setting 
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.JPEGXR)
+    processingsetting1.ConvertTo8Bit = ConvertTo8Bit
+    processingsetting1.ShiftPixel = ShiftPixel
+    processingsetting1.Quality = Quality
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = Resize/100
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = GenerateZipFile
+    processingsetting1.GraphicElementsZoom = zoom/100
+## SUR    
+else:
+    window = ZenWindow()
+    zw = Zen.Windows
+    window.Title = 'SUR Export Parameters'
+    window.AddDoubleRange('Resize','Resize (%)',100,1,100)
+    window.AddCheckbox('OriginalData','Original data',False)
+    window.AddCheckbox('ShiftPixel','       Shift Pixel',True)
+    window.AddCheckbox('DispCurve','Apply display curve and channel color',True)
+    window.AddCheckbox('BurnInGraphics','       Burn-in Annotations',True)
+    window.AddDropDown('zoom','                 Zoom (%)', list(range(1, 101)),100)
+    window.AddCheckbox('UseChannelNames','Use channel names',True)
+    window.AddCheckbox('UseFullSet','Use full set of dimensions',True)
+    window.AddCheckbox('UseSubSet','Define subset',False)
+    window.AddFolderBrowser('destfolder','Export to','C:\Users\Public\Pictures')
+    window.AddCheckbox('CreateFolder','                 Create Folder',True)
+    window.AddCheckbox('GenerateXMLFile','                  Generate xml file',False)
+    window.AddCheckbox('GenerateZipFile','                  Generate zip file',False)
+    window.AddTextBox('Prefix','Prefix', export_folder_prefix)
+    result=window.Show()
+    ## Read the user-input export parameters from the GUI
+    Resize = float(result.GetValue('Resize')) 
+    OriginalData = (result.GetValue('OriginalData'))
+    if OriginalData == False:
+        ShiftPixel = True
+    else:    
+        ShiftPixel = (result.GetValue('ShiftPixel'))
+    DispCurve = (result.GetValue('DispCurve')) 
+    BurnInGraphics = (result.GetValue('BurnInGraphics')) 
+    zoom = int(result.GetValue('zoom'))
+    UseChannelNames = (result.GetValue('UseChannelNames')) 
+    UseFullSet = (result.GetValue('UseFullSet')) 
+    UseSubSet = (result.GetValue('UseSubSet')) 
+    CreateFolder = (result.GetValue('CreateFolder')) 
+    GenerateXMLFile = (result.GetValue('GenerateXMLFile')) 
+    destfolder = str(result.GetValue('destfolder')) 
+    Prefix = str(result.GetValue('Prefix'))
+    ## Apply the user-selected Processing Setting
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.SUR)
+    processingsetting1.ShiftPixel = ShiftPixel
+    processingsetting1.DestinationFolder = destfolder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = OriginalData
+    processingsetting1.ApplyDisplayCurveAndChannelColor = DispCurve
+    processingsetting1.BurnInGraphics = BurnInGraphics
+    processingsetting1.UseChannelNames = UseChannelNames
+    processingsetting1.Resize = Resize/100
+    processingsetting1.GenerateXMLFile = GenerateXMLFile
+    processingsetting1.CreateFolder = CreateFolder
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GraphicElementsZoom = zoom/100
+    
+    #imgtop = Zen.Processing.Transformation.Topography.CreateTopography(imgzstack, 1, 254) #0, 255 means no filter, for 8 bit images
+    # saving file to the directory
+    #Zen.Processing.Utilities.ExportHeightmapFromTopography(fullpath+".sur")
+    
+## Multichannel combination viewer and export   
+for n in range(selected_channel_combinations.Count):
+    print(selected_channel_combinations[n])
+    selected_channel_combinations_temp = selected_channel_combinations[n]
+    xp_arr = ([xp for (xi, x) in enumerate(selected_channel_combinations_temp) for (xp, y) in enumerate(channel_name_list) if x==y])
+    #print(xp_arr)
+    ## Initialize image_final to be added to Documents pane 
+    image_final = image.CreateSubImage('C(' + str(xp_arr[0]+1) + ')') 
+    if (xp_arr.Count == 1):
+        Zen.Application.Documents.Add(image_final)
+    else: 
+        for p in range(1, xp_arr.Count): 
+            channel_img = image.CreateSubImage('C(' + str(xp_arr[p]+1) + ')') 
+            #Zen.Application.Documents.Add(channel_img) 
+            image_final = Zen.Processing.Utilities.AddChannels(image_final, channel_img)
+        Zen.Application.Documents.Add(image_final)
+    ## Export the images to the user-selected directory
+    processingsetting1.Prefix = Prefix + '_' + str(selected_channel_combinations_temp)
+    Zen.Processing.Utilities.ExportSingleFile(image_final, processingsetting1)
+##
+#####################################################################################
+    
+
+
+
+
+
+
+</Text>
+  <Author></Author>
+  <Description></Description>
+  <Keywords></Keywords>
+  <Row>347</Row>
+  <Column>48</Column>
+</Script>

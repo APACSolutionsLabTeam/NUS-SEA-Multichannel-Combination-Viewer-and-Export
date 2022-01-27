@@ -1,0 +1,265 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Script>
+  <Context>Zen26</Context>
+  <Version>1.0</Version>
+  <Language>Python</Language>
+  <Text>#######################################################
+## I M A G E   P R O C E S S I N G
+##
+## Macro name: SplitMultichannelToIndividualChannels.czmac
+##
+## Author name: APAC Digital Solutions Team
+##
+## TAKES THE MULTICHANNEL ACTIVE IMAGE
+## SUBSET THE CHANNELS AND CREATE DESIRED COMBINATION 
+## OF CHANNEL OUTPUTS
+##
+## Copyright (c) 2021 by Carl Zeiss Microscopy GmbH.
+## Permission is granted to use, modify and distribute this code,
+## as long as this copyright notice remains part of the code.
+#######################################################
+##
+##
+## Import required libraries
+from itertools import combinations
+##
+### clear console output
+Zen.Application.MacroEditor.ClearMessages()
+## Set the experiment output image as the active document for the macro
+image = Zen.Application.Documents.ActiveDocument
+## Get the number of channels in the image
+num_channels = image.Bounds.SizeC
+print('Number of channels',num_channels)
+num_channels_list = list(range(1, num_channels+1))
+channel_name_list = []
+## Get all the channel naes as a list
+for j in range (1,num_channels+1):
+    ## Get channel name from image metadata
+    channel_name = image.Metadata.GetChannelName(j-1)
+    ##
+    ## Create an array of channel names
+    channel_name_list.append(channel_name)
+##   
+print('Names of the channels:', channel_name_list)
+## Finding the mximum possible combinations of channels
+possible_channel_combinations = sum([list(map(list, combinations(channel_name_list, i))) for i in range(len(channel_name_list) + 1)], [])
+print(possible_channel_combinations)
+##
+## Number of channels that can be selected by the user
+num_channel_combinations = possible_channel_combinations.Count
+#export_list = ['JPEG File Interchange Format (JPEG)', 'Windows Bitmap (BMP)', 'Tagged Image File Format (TIFF)', 'Tiff Format (64Bit) (BigTiff)', 'Portable Network Graphics (PNG)', 'JPEG XR(WDP)', 'DigitalSurf SUR (SUR)']
+export_list = ['JPEG File Interchange Format (JPEG)', 'Windows Bitmap (BMP)', 'Tagged Image File Format (TIFF)', 'Tiff Format (64Bit) (BigTiff)', 'Portable Network Graphics (PNG)', 'JPEG XR(WDP)']
+window1 = ZenWindow()
+window1.Initialize("Select Channel Combinations and Export Options")
+## GUI checkbox to select the channels
+for k in range(1, num_channel_combinations):
+     window1.AddCheckbox('channel_combination'+str(k),str(possible_channel_combinations[k]),False)
+window1.AddFolderBrowser('export_folder','Export Folder','C:\Users\Public\Pictures')     
+window1.AddDropDown('export_type', 'Export Type', export_list, 0)
+result1 = window1.Show()
+## Process GUI Inputs
+export_folder = str(result1.GetValue('export_folder'))
+print('Selected folder to export:', export_folder)
+export_type = str(result1.GetValue('export_type'))
+print('Selected export type:',export_type)
+selected_channel_combinations = []
+for m in range(1, num_channel_combinations):
+     selected_channel_combinations_temp    = str(result1.GetValue('channel_combination'+str(m)))
+     if selected_channel_combinations_temp == "True":
+        selected_channel_combinations.append((possible_channel_combinations[m]))
+print('The channel combinations selected are:', selected_channel_combinations)
+
+## Defining the process settings
+if (export_type == 'JPEG File Interchange Format (JPEG)'):
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.JPEG)
+    processingsetting1.Quality = 100
+    processingsetting1.ShiftPixel = True
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+    
+elif (export_type == 'Windows Bitmap (BMP)'):
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.BMP)
+    processingsetting1.ShiftPixel = True
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+        
+elif (export_type == 'Tagged Image File Format (TIFF)'):
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.TIFF)
+    processingsetting1.Compression = ZenTiffCompression.None
+    processingsetting1.ConvertTo8Bit = True
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+ 
+elif (export_type == 'Tiff Format (64Bit) (BigTiff)'): 
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.BigTiff)
+    processingsetting1.ShiftPixel = True
+    processingsetting1.BigTiff = True
+    processingsetting1.Compression = ZenBigTiffCompression.Lossfree
+    processingsetting1.MergeAllScenes = True
+    processingsetting1.TiffTiles = True
+    processingsetting1.Pyramide = True
+    processingsetting1.ConvertTo8Bit = False
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+    
+elif (export_type == 'Portable Network Graphics (PNG)'):   
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.PNG)
+    processingsetting1.ConvertTo8Bit = True
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+
+elif (export_type == 'JPEG XR(WDP)'):   
+    processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.JPEGXR)
+    processingsetting1.ConvertTo8Bit = True
+    processingsetting1.ShiftPixel = True
+    processingsetting1.Quality = 90
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+    
+#else:
+    #processingsetting1 = Zen.Processing.Utilities.Settings.SingleFileExportSetting(ZenExportFileType.SUR)
+    """
+    processingsetting1.ConvertTo8Bit = True
+    processingsetting1.ShiftPixel = True
+    processingsetting1.Quality = 90
+    processingsetting1.DestinationFolder = export_folder
+    processingsetting1.SubsetString = ''
+    processingsetting1.MergedChannelsImage = True
+    processingsetting1.IndividualChannelsImages = False
+    processingsetting1.OriginalData = False
+    processingsetting1.ApplyDisplayCurveAndChannelColor = True
+    processingsetting1.BurnInGraphics = True
+    processingsetting1.UseChannelNames = False
+    processingsetting1.Resize = 1
+    processingsetting1.GenerateXMLFile = False
+    processingsetting1.CreateFolder = True
+    processingsetting1.Tiles = ZenTileMode.Retile
+    processingsetting1.Columns = 1
+    processingsetting1.Rows = 1
+    processingsetting1.Overlap = 0
+    processingsetting1.GenerateZipFile = False
+    processingsetting1.GraphicElementsZoom = 1
+    """
+for n in range(selected_channel_combinations.Count):
+    print(selected_channel_combinations[n])
+    selected_channel_combinations_temp = selected_channel_combinations[n]
+    xp_arr = ([xp for (xi, x) in enumerate(selected_channel_combinations_temp) for (xp, y) in enumerate(channel_name_list) if x==y])
+    #print(xp_arr)
+    ## Initialize image_final to be added to Documents pane 
+    image_final = image.CreateSubImage('C(' + str(xp_arr[0]+1) + ')') 
+    if (xp_arr.Count == 1):
+        Zen.Application.Documents.Add(image_final)
+    else: 
+        for p in range(1, xp_arr.Count): 
+            channel_img = image.CreateSubImage('C(' + str(xp_arr[p]+1) + ')') 
+            #Zen.Application.Documents.Add(channel_img) 
+            image_final = Zen.Processing.Utilities.AddChannels(image_final, channel_img)
+        Zen.Application.Documents.Add(image_final)
+    ## Export the images to the user-selected directory
+    #processingsetting1.Prefix = (str(selected_channel_combinations_temp).strip('][').split(', '))  
+    processingsetting1.Prefix = str(selected_channel_combinations_temp)
+    Zen.Processing.Utilities.ExportSingleFile(image_final, processingsetting1)
+
+
+
+</Text>
+  <Author></Author>
+  <Description></Description>
+  <Keywords></Keywords>
+  <Row>249</Row>
+  <Column>1</Column>
+  <WatchVariables>
+    <Watch>selected_channel_combinations_temp</Watch>
+    <Watch>channel_name_list</Watch>
+    <Watch>processingsetting1.Prefix</Watch>
+  </WatchVariables>
+</Script>
